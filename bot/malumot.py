@@ -6,17 +6,20 @@ than eyeballed, so the output matches it run for run:
 * A4 portrait, the template's exact margins, Times New Roman throughout.
 * Headings 14pt bold — the two title lines in navy ``#002060``, MAʼLUMOT in
   red ``#C00000``.
-* The ``(… й)`` date line right-aligned and fully *italic*, 12pt.
+* The ``(DD.MM.YYYY й)`` date line right-aligned and fully *italic*, 12pt.
 * A five-column table with **no borders at all** (the template sets every
   border to ``none``), column widths in twips, every cell vertically centred.
 * Header row shaded ``#F2F2F2`` with navy bold 14pt text.
 * Surname in ``#002060``, bold, ALL CAPS, on its own line above the rest of
   the name, which is black and not bold.
-* Dates written as day + Cyrillic month name — "4 сентябрь", not "04.09.2026".
+* Table dates written as day + Cyrillic month name — "4 сентябрь". The heading
+  date stays numeric, ``04.09.2026``.
+* ``(Раис ўринбосари)`` stripped out of the Лавозими column — see
+  :data:`STRIP_FROM_DEPARTMENT`.
 
 Placeholder → source mapping, as specified in A.docx:
 
-    DATEQ            the date the report is for
+    DATEQ            the date the report is for, DD.MM.YYYY
     SURNAMEQ         first word of NAME, upper-cased, navy, bold, own line
     RestofthenameQ   everything after that first space, black, not bold
     DEPARTMENTQ      the DEPARTMENT entry (which carries the lavozim)
@@ -32,6 +35,7 @@ from __future__ import annotations
 
 import datetime as dt
 import io
+import re
 from typing import Any, Iterable, Sequence
 
 from docx import Document
@@ -93,10 +97,13 @@ MONTHS_CYRILLIC = (
     "декабрь",
 )
 
-# The heading reads "(<date> й)", where й is short for йил — "year". Dropping
-# the year there would leave that word dangling, so the heading keeps it while
-# the table dates do not. Set this to False for a bare "4 сентябрь" heading.
-HEADING_DATE_INCLUDES_YEAR = True
+# Phrases to drop from the Лавозими column. DEPARTMENT doubles as the roster
+# key, so it has to carry the full official title; the МАЪЛУМОТ table does not
+# want the deputy-chairman qualifier. Matching happens after transliteration,
+# so an entry written in Latin ("(Rais o'rinbosari)") and one written in
+# Cyrillic are both caught by the single Cyrillic pattern below.
+# Add more phrases here if other qualifiers need dropping.
+STRIP_FROM_DEPARTMENT: tuple[str, ...] = ("(Раис ўринбосари)",)
 
 
 def fmt_day_month(day: dt.date) -> str:
@@ -105,9 +112,22 @@ def fmt_day_month(day: dt.date) -> str:
 
 
 def fmt_heading_date(day: dt.date) -> str:
-    """``4 сентябрь 2026`` for the ``(… й)`` line."""
-    base = fmt_day_month(day)
-    return f"{base} {day.year}" if HEADING_DATE_INCLUDES_YEAR else base
+    """``04.09.2026`` for the ``(… й)`` line."""
+    return day.strftime("%d.%m.%Y")
+
+
+def clean_department(text: str | None) -> str:
+    """Transliterate the lavozim, then strip the unwanted qualifiers.
+
+    Whitespace is normalised afterwards, so removing a phrase from the middle
+    of a title does not leave a double space, and a trailing comma or dash left
+    dangling by the removal is trimmed too.
+    """
+    out = transliterate(text)
+    for phrase in STRIP_FROM_DEPARTMENT:
+        out = re.sub(re.escape(phrase), " ", out, flags=re.IGNORECASE)
+    out = " ".join(out.split())
+    return out.strip(" ,;-–—")
 
 
 # ------------------------------------------------------------------- low level
@@ -291,7 +311,7 @@ def build_document(
 
         # Лавозими
         paragraph = _tidy(_cell_paragraph(cells[2]), alignment=WD_ALIGN_PARAGRAPH.CENTER)
-        _write(paragraph, transliterate(record.get("department") or ""))
+        _write(paragraph, clean_department(record.get("department")))
 
         # Кетган куни — date bold, reason in brackets underneath
         paragraph = _tidy(_cell_paragraph(cells[3]), alignment=WD_ALIGN_PARAGRAPH.CENTER)
