@@ -1,0 +1,4 @@
+python-telegram-bot[job-queue,rate-limiter]==22.8
+asyncpg==0.30.0
+openpyxl==3.1.5
+python-docx==1.2.0

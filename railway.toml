@@ -1,0 +1,18 @@
+[build]
+builder = "RAILPACK"
+
+[deploy]
+startCommand = "python main.py"
+restartPolicyType = "ON_FAILURE"
+restartPolicyMaxRetries = 10
+
+# The bot uses long polling, and Telegram allows exactly ONE poller per token.
+# By default Railway keeps the old deployment alive while the new one boots,
+# which would briefly run two pollers and produce 409 Conflict errors.
+# Zero overlap makes the switchover clean.
+overlapSeconds = 0
+drainingSeconds = 10
+
+# NOTE: replica count is NOT set here. Keep it at 1 in the Railway UI
+# (service -> Settings -> Deploy -> Replicas). More than one replica means two
+# processes polling the same token and every employee getting doubled messages.
